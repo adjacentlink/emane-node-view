@@ -1,0 +1,15 @@
+{
+  "name": "emane-node-view",
+  "version": "1.0.0",
+   "main": "app.js",
+   "scripts": {
+    "bundle": "browserify app.js -o bundle.js"
+  },
+  "author": "labs@adjacentlink.com",
+  "license": "BSD-3-Clause",
+  "description": "",
+  "dependencies": {
+    "leaflet": "^1.5.1",
+    "socket.io-client": "^2.2.0"
+  }
+}

@@ -1,0 +1,17 @@
+from setuptools import setup
+
+setup(name='emane-node-view',
+      version='@VERSION@',
+      description='EMANE Node View',
+      long_description='EMANE Node View',
+      author='Adjacent Link LLC',
+      author_email='labs at adjacent link dot com',
+      url="https://adjacentlink.com",
+      license = 'BSD',
+      packages=['emane_node_view'],
+      include_package_data=True,
+      # package_data={'emane_node_view' :['static/index.html',
+      #                                   'static/bundle.js',
+      #                                   'static/style/*',
+      #                                   'static/node_modules/leaflet/dist/leaflet.css']},
+      scripts=['scripts/emane-node-view-publisher'])
