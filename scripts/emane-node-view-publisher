@@ -1,0 +1,512 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2019 - Adjacent Link LLC, Bridgewater, New Jersey
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# * Redistributions of source code must retain the above copyright
+#   notice, this list of conditions and the following disclaimer.
+# * Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in
+#   the documentation and/or other materials provided with the
+#   distribution.
+# * Neither the name of Adjacent Link LLC nor the names of its
+#   contributors may be used to endorse or promote products derived
+#   from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+
+from __future__ import absolute_import, division, print_function
+
+from flask import Flask, Response, json
+from flask_socketio import SocketIO, emit
+import os
+import daemon
+import daemon.pidfile
+import sys
+import logging
+import zmq
+import six
+import threading
+import traceback
+from collections import namedtuple
+from collections import defaultdict
+from lxml import etree
+from argparse import ArgumentParser
+from pkg_resources import resource_filename
+import emane_node_view
+from otestpoint.interface.probereport_pb2 import ProbeReport
+from otestpoint.emane.physicallayer_pb2 import Measurement_emane_physicallayer_tables_events
+import mimetypes
+
+mimetypes.add_type('image/png','.png')
+mimetypes.add_type('text/javascript','.js')
+
+xsd='''\
+<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>
+  <xs:element name='emane-node-view-publisher'>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name='nodes'>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name='node'
+                          maxOccurs='unbounded'>
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name='proxy'
+                                minOccurs='0'>
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name='node'
+                                      minOccurs='0'
+                                      maxOccurs='unbounded'>
+                            <xs:complexType>
+                              <xs:attribute name='nem-id'
+                                            type='xs:unsignedShort'
+                                            use='required'/>
+                              <xs:attribute name='color'
+                                            type='xs:string'
+                                            default='black'/>
+                              <xs:attribute name='label'
+                                            type='xs:string'
+                                            use='required'/>
+                            </xs:complexType>
+                          </xs:element>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute name='nem-id'
+                                type='xs:unsignedShort'
+                                use='required'/>
+                  <xs:attribute name='color'
+                                type='xs:string'
+                                default='black'/>
+                   <xs:attribute name='link-color'
+                                type='xs:string'
+                                default='black'/>
+                  <xs:attribute name='label'
+                                type='xs:string'
+                                use='required'/>
+                  <xs:attribute name='tag'
+                                type='xs:string'
+                                use='required'/>
+                  <xs:attribute name='link-detection'
+                                type='xs:string'
+                                use='optional'/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:unique name='UniqueNodeNEMId'>
+            <xs:selector xpath='node'/>
+            <xs:field xpath='@nem-id'/>
+          </xs:unique>
+          <xs:unique name='UniqueNodeTag'>
+            <xs:selector xpath='node'/>
+            <xs:field xpath='@tag'/>
+          </xs:unique>
+          <xs:unique name='UniqueNodeLabel'>
+            <xs:selector xpath='node'/>
+            <xs:field xpath='@label'/>
+          </xs:unique>
+          <xs:unique name='UniqueProxyNodeNEMId'>
+            <xs:selector xpath='node/proxy/node'/>
+            <xs:field xpath='@nem-id'/>
+          </xs:unique>
+          <xs:unique name='UniqueProxyNodeLabel'>
+            <xs:selector xpath='node/proxy/node'/>
+            <xs:field xpath='@label'/>
+          </xs:unique>
+        </xs:element>
+        <xs:element name='link-detection'
+                    minOccurs='0'>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name='algorithm'
+                          minOccurs='0'
+                          maxOccurs='unbounded'>
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name='python'
+                                type='xs:string'/>
+                  </xs:sequence>
+                  <xs:attribute name='name'
+                                type='xs:string'
+                                use='required'/>
+                  <xs:attribute name='probe'
+                                type='xs:string'
+                                use='required'/>
+                  <xs:attribute name='measurement'
+                                type='xs:string'
+                                use='required'/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:unique name='UniqueLinkDetectionAlgorithmName'>
+            <xs:selector xpath='algorithm'/>
+            <xs:field xpath='@name'/>
+          </xs:unique>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name='endpoint'
+                    type='xs:string'
+                    use='required'/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>'''
+
+def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_infos):
+    link_detection_groups = defaultdict(set)
+    probes = set()
+    measurement_groups = defaultdict(set)
+
+    for node_info in list(node_infos.values()):
+        if node_info.link_detection != None:
+            link_detection_groups[node_info.link_detection].add(node_info.tag)
+
+    for algo_name,members in list(link_detection_groups.items()):
+        probes.add(algorithm_infos[algo_name].probe)
+        measurement_groups[algorithm_infos[algo_name].measurement] = members
+
+    store = {}
+
+    context = zmq.Context()
+
+    subscriber = context.socket(zmq.SUB)
+
+    subscriber.setsockopt(zmq.IPV4ONLY,0)
+
+    subscriber.connect("tcp://" + endpoint)
+
+    if six.PY2:
+        subscriber.setsockopt(zmq.SUBSCRIBE,
+                              'EMANE.PhysicalLayer.Tables.Events')
+
+        for probe in probes:
+            subscriber.setsockopt(zmq.SUBSCRIBE,probe)
+    else:
+        subscriber.setsockopt_string(zmq.SUBSCRIBE,
+                                     'EMANE.PhysicalLayer.Tables.Events')
+
+        for probe in probes:
+            subscriber.setsockopt_string(zmq.SUBSCRIBE,probe)
+
+    poller = zmq.Poller()
+
+    poller.register(subscriber, zmq.POLLIN)
+
+    store = {}
+    cookies = {}
+
+    new_data = False
+
+    while not shutdown_event.is_set():
+
+        socks = dict(poller.poll(250))
+
+        if (subscriber in socks and socks[subscriber] == zmq.POLLIN):
+            new_data = True
+
+            msgs = subscriber.recv_multipart()
+
+            report = ProbeReport()
+
+            report.ParseFromString(msgs[1])
+
+            if report.tag in node_infos:
+
+                if report.tag not in store:
+                    cookies[report.tag] = None
+
+                    store[report.tag] = {'id':node_infos[report.tag].nem_id,
+                                         'lat':0,
+                                         'lon':0,
+                                         'alt':0,
+                                         'name': node_infos[report.tag].label,
+                                         'color': node_infos[report.tag].color,
+                                         'link_color': node_infos[report.tag].link_color,
+                                         'links':[],
+                                         'valid':False}
+
+                if report.data.name == 'Measurement_emane_physicallayer_tables_events':
+
+                    measurement = Measurement_emane_physicallayer_tables_events()
+
+                    measurement.ParseFromString(report.data.blob)
+
+                    for row in measurement.locationeventinfotable.rows:
+                        vals = []
+                        for col in row.values[0:4]:
+                            if col.type == col.TYPE_UINTEGER:
+                                vals.append(col.uValue)
+                            else:
+                                vals.append(col.dValue)
+
+                        (nid,lat,lon,alt) = vals
+
+                        if nid == node_infos[report.tag].nem_id:
+                            store[report.tag]['lat'] = lat
+                            store[report.tag]['lon'] = lon
+                            store[report.tag]['alt'] = alt
+                            store[report.tag]['valid'] = True
+
+                            if not node_infos[report.tag].proxy:
+                                break
+
+                        elif nid in node_infos[report.tag].proxy:
+                            poxy='{}_proxy_{}'.format(report.tag,nid)
+                            store[poxy] = {'id':nid,
+                                           'lat':lat,
+                                           'lon':lon,
+                                           'alt':alt,
+                                           'name': node_infos[report.tag].proxy[nid].label,
+                                           'color': node_infos[report.tag].proxy[nid].color,
+                                           'link_color': 'black',
+                                           'links':[],
+                                           'valid': True}
+
+                elif report.data.name in measurement_groups and \
+                             report.tag in measurement_groups[report.data.name]:
+                    if node_infos[report.tag].link_detection != None:
+                        (store[report.tag]['links'],
+                         cookies[report.tag]) = algorithm_infos[node_infos[report.tag].link_detection].callable(report.data.blob,
+                                                                                                                cookies[report.tag])
+
+        else:
+
+            try:
+                if new_data:
+                    valid_nodes = [x for x in list(store.values()) if x['valid']]
+
+                    if valid_nodes:
+                        socketio.emit('update',json.dumps(valid_nodes),namespace='/api')
+
+                    # mark all node positions not valid
+                    for x in store:
+                        store[x]['valid'] = False
+
+                    new_data = False
+            except:
+                print(traceback.format_exc())
+
+def do_main():
+    tree = etree.parse(args['config'])
+
+    root = tree.getroot()
+
+    schemaDoc = etree.fromstring(xsd)
+
+    schema = etree.XMLSchema(etree=schemaDoc,attribute_defaults=True)
+
+    if not schema(root):
+        message = []
+        for entry in schema.error_log:
+            message.append('{}: {}'.format(entry.line,entry.message))
+            print('\n'.join(message),file=sys.stderr)
+            exit(1)
+
+    def make_algorithm_func(code_string):
+        code = compile(code_string,'<string>','exec')
+        def _func(_blob,_cookie):
+            l = locals()
+            l['_links'] = []
+            # full access to globals given to all imports in code
+            six.exec_(code,globals(),l)
+            return (l['_links'],l['_cookie'])
+        return _func
+
+    endpoint = root.get('endpoint')
+
+    algorithm_infos = {}
+    for e_algorithm in root.xpath('/emane-node-view-publisher/link-detection/algorithm'):
+        for e_python in e_algorithm.xpath('python'):
+            algorithm_infos[e_algorithm.get('name')] = AlgorithmInfo(e_algorithm.get('name'),
+                                                                     e_algorithm.get('probe'),
+                                                                     e_algorithm.get('measurement'),
+                                                                     make_algorithm_func(e_python.text))
+
+    node_infos = {}
+    for e_node in root.xpath('/emane-node-view-publisher/nodes/node'):
+        algo_name = e_node.get('link-detection',None)
+        if algo_name != None and algo_name not in algorithm_infos:
+            print('error: assignment of an unknown link detect algorithm {}'.format(algo_name),
+                  file=sys.stderr)
+            exit(1)
+
+        proxy_infos = {}
+        for e_proxy in e_node.xpath('proxy/node'):
+            proxy_nemid = int(e_proxy.get('nem-id'))
+            proxy_infos[proxy_nemid] = ProxyInfo(proxy_nemid,
+                                                 e_proxy.get('color'),
+                                                 e_proxy.get('label'))
+
+        node_infos[e_node.get('tag')] = NodeInfo(int(e_node.get('nem-id')),
+                                                 e_node.get('color'),
+                                                 e_node.get('link-color'),
+                                                 e_node.get('label'),
+                                                 e_node.get('tag'),
+                                                 proxy_infos,
+                                                 algo_name)
+
+    app = Flask('emane_node_view',
+                static_folder=os.path.join(os.path.join(os.path.dirname(emane_node_view.__file__),
+                                                        'static')))
+
+    socketio = SocketIO(app,async_mode='threading')
+
+    @socketio.on('connect',namespace='/api')
+    def test_connect():
+        logging.info('Client connected')
+
+    @socketio.on('disconnect',namespace='/api')
+    def test_disconnect():
+        logging.info('Client disconnected')
+
+    @app.route('/')
+    def index():
+        return app.send_static_file('index.html')
+
+    @app.route('/<path:text>')
+    def foo(text):
+        if text[-1] == '/':
+            text = text[0:-1]
+        r =  app.send_static_file(text)
+        r.mimetype = mimetypes.guess_type(text)[0]
+        return r
+
+    shutdown_event = threading.Event()
+
+    thread = threading.Thread(target=process,args=(socketio,
+                                                   shutdown_event,
+                                                   endpoint,
+                                                   node_infos,
+                                                   proxy_infos,
+                                                   algorithm_infos))
+    thread.start()
+
+    socketio.run(app,
+                 host=args['host'],
+                 port=args['port'])
+
+    shutdown_event.set()
+
+    thread.join()
+
+    logging.info('shutting down')
+
+if __name__ == '__main__':
+    class NodeInfo(namedtuple('NodeInfo',
+                              ['nem_id',
+                               'color',
+                               'link_color',
+                               'label',
+                               'tag',
+                               'proxy',
+                               'link_detection'
+                              ])):
+        pass
+
+    class ProxyInfo(namedtuple('ProxyInfo',
+                               ['nem_id',
+                                'color',
+                                'label'
+                              ])):
+        pass
+
+    class AlgorithmInfo(namedtuple('AlgorithmInfo',
+                              ['name',
+                               'probe',
+                               'measurement',
+                               'callable'])):
+        pass
+
+    argument_parser = ArgumentParser()
+
+    argument_parser.add_argument('config',
+                                 type=str,
+                                 help='XML configuration file.')
+
+    argument_parser.add_argument('--host',
+                                 type=str,
+                                 default='0.0.0.0',
+                                 help='hostname or IP address for the server to listen on.  [default: %(default)s]')
+
+    argument_parser.add_argument('-p',
+                                 '--port',
+                                 metavar='PORT',
+                                 type=int,
+                                 default=5000,
+                                 help='port number for the server to listen on. [default: %(default)s]')
+
+    argument_parser.add_argument("--pid-file",
+                                 type=str,
+                                 default=None,
+                                 help="write pid file")
+
+    argument_parser.add_argument("--log-file",
+                                 type=str,
+                                 default=None,
+                                 help="write logs to file")
+
+    argument_parser.add_argument('--log-level',
+                                 type=str,
+                                 metavar='LEVEL',
+                                 choices=['critical',
+                                          'error',
+                                          'warning',
+                                          'info',
+                                          'debug',
+                                          'notset'],
+                                 default='warning',
+                                 help='log level [default: %(default)s].')
+
+    argument_parser.add_argument("--daemonize",
+                                 "-d",
+                                 action="store_true",
+                                 dest="daemonize",
+                                 default=False,
+                                 help="daemonize application [default: %(default)s]")
+
+    ns = argument_parser.parse_args()
+
+    args = vars(ns)
+
+    pid_file_context = None
+
+    if args['pid_file'] != None:
+        pid_file_context = daemon.pidfile.PIDLockFile(args['pid_file'])
+
+    with daemon.DaemonContext(pidfile=pid_file_context,
+                              working_directory=os.getcwd(),
+                              detach_process=args['daemonize'],
+                              stdout=None if args['daemonize'] else sys.stdout,
+                              stderr=None if args['daemonize'] else sys.stderr):
+        try:
+            logging.basicConfig(filename=args['log_file'],
+                                format='%(asctime)s.%(msecs)03d %(levelname)s: %(message)s',
+                                datefmt='%H:%M:%S',
+                                level=getattr(logging,args['log_level'].upper()))
+
+            logging.info('command line: {}'.format(' '.join(sys.argv)))
+
+            do_main()
+        except:
+            logging.error(traceback.format_exc())
