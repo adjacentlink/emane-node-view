@@ -85,7 +85,7 @@ $ ./autogen.sh && ./configure && make
 $ sudo ./install-virtualenv.sh  /install/path
 ```
 
-# Running `emane-node-view-publisher`
+# Running emane-node-view-publisher
 
 emane-node-view consists of the Python module `emane_node_view` and the
 `emane-node-view-publisher` application.
@@ -101,7 +101,7 @@ See `emane-node-view-publisher -h` for more information.
 To view the Leaflet web front end, point your browser of choice at
 *your_host:5000*.
 
-# Configuring `emane-node-view-publisher`
+# Configuring emane-node-view-publisher
 
 The following XML can be used to visualize node locations and links
 for EMANE Tutorial demonstration [3][8].
