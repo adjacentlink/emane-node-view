@@ -218,9 +218,13 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
 
     new_data = False
 
+    last_publish_timestamp = -1
+
+    report_timestamp = -1
+
     while not shutdown_event.is_set():
 
-        socks = dict(poller.poll(250))
+        socks = dict(poller.poll(500))
 
         if (subscriber in socks and socks[subscriber] == zmq.POLLIN):
             new_data = True
@@ -231,7 +235,12 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
 
             report.ParseFromString(msgs[1])
 
+            if report.timestamp <= last_publish_timestamp:
+                continue
+
             if report.tag in node_infos:
+
+                report_timestamp = report.timestamp
 
                 if report.tag not in store:
                     cookies[report.tag] = None
@@ -298,6 +307,8 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
 
                     if valid_nodes:
                         socketio.emit('update',json.dumps(valid_nodes),namespace='/api')
+
+                        last_publish_timestamp = report_timestamp
 
                     # mark all node positions not valid
                     for x in store:
