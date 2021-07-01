@@ -32,7 +32,7 @@
  See toplevel COPYING for more information.
 ])
 
-AC_INIT([emane-node-view],0.2.1,[labs at adjacentlink dot com])
+AC_INIT([emane-node-view],0.2.2,[labs at adjacentlink dot com])
 
 AC_CONFIG_SRCDIR([emane_node_view])
 
