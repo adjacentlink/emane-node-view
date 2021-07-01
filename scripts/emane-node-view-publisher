@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2019 - Adjacent Link LLC, Bridgewater, New Jersey
+# Copyright (c) 2019,2021 - Adjacent Link LLC, Bridgewater, New Jersey
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -98,7 +98,7 @@ xsd='''\
                   <xs:attribute name='color'
                                 type='xs:string'
                                 default='black'/>
-                   <xs:attribute name='link-color'
+                  <xs:attribute name='link-color'
                                 type='xs:string'
                                 default='black'/>
                   <xs:attribute name='label'
@@ -144,6 +144,32 @@ xsd='''\
                           maxOccurs='unbounded'>
                 <xs:complexType>
                   <xs:sequence>
+                    <xs:element name='extension'
+                                minOccurs='0'>
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name='probes'
+                                      minOccurs='0'>
+                            <xs:complexType>
+                              <xs:sequence>
+                                <xs:element name='probe'
+                                            minOccurs='1'
+                                            maxOccurs='unbounded'>
+                                  <xs:complexType>
+                                    <xs:attribute name='probe'
+                                                  type='xs:string'
+                                                  use='required'/>
+                                    <xs:attribute name='measurement'
+                                                  type='xs:string'
+                                                  use='required'/>
+                                  </xs:complexType>
+                                </xs:element>
+                              </xs:sequence>
+                            </xs:complexType>
+                          </xs:element>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
                     <xs:element name='python'
                                 type='xs:string'/>
                   </xs:sequence>
@@ -183,8 +209,9 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
             link_detection_groups[node_info.link_detection].add(node_info.tag)
 
     for algo_name,members in list(link_detection_groups.items()):
-        probes.add(algorithm_infos[algo_name].probe)
-        measurement_groups[algorithm_infos[algo_name].measurement] = members
+        for probe_info in algorithm_infos[algo_name].probe_infos:
+            probes.add(probe_info.probe)
+            measurement_groups[probe_info.measurement].update(members)
 
     store = {}
 
@@ -215,6 +242,7 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
 
     store = {}
     cookies = {}
+    global_cookie = None
 
     new_data = False
 
@@ -295,9 +323,20 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
                 elif report.data.name in measurement_groups and \
                              report.tag in measurement_groups[report.data.name]:
                     if node_infos[report.tag].link_detection != None:
-                        (store[report.tag]['links'],
-                         cookies[report.tag]) = algorithm_infos[node_infos[report.tag].link_detection].callable(report.data.blob,
-                                                                                                                cookies[report.tag])
+                        (links,
+                         cookies[report.tag],
+                         global_cookie) = algorithm_infos[node_infos[report.tag].link_detection].callable(report.data.blob,
+                                                                                                          report.data.name,
+                                                                                                          report.tag,
+                                                                                                          cookies[report.tag],
+                                                                                                          global_cookie)
+                        store[report.tag]['links'] = []
+                        for link in links:
+                            if hasattr(link,'__iter__') and len(link) == 2:
+                                store[report.tag]['links'].append({'remote': link[0],
+                                                                   'color': link[1]})
+                            else:
+                                store[report.tag]['links'].append({'remote': link})
 
         else:
 
@@ -336,22 +375,28 @@ def do_main():
 
     def make_algorithm_func(code_string):
         code = compile(code_string,'<string>','exec')
-        def _func(_blob,_cookie):
+        def _func(_blob,_name,_tag,_cookie,_gcookie):
             l = locals()
             l['_links'] = []
             # full access to globals given to all imports in code
             six.exec_(code,globals(),l)
-            return (l['_links'],l['_cookie'])
+            return (l['_links'],l['_cookie'],l['_gcookie'])
         return _func
 
     endpoint = root.get('endpoint')
 
     algorithm_infos = {}
     for e_algorithm in root.xpath('/emane-node-view-publisher/link-detection/algorithm'):
+        probe_infos = [ProbeInfo(e_algorithm.get('probe'),
+                                 e_algorithm.get('measurement'))]
+
+        for e_probe in e_algorithm.xpath('extension/probes/probe'):
+            probe_infos.append(ProbeInfo(e_probe.get('probe'),
+                                         e_probe.get('measurement')))
+
         for e_python in e_algorithm.xpath('python'):
             algorithm_infos[e_algorithm.get('name')] = AlgorithmInfo(e_algorithm.get('name'),
-                                                                     e_algorithm.get('probe'),
-                                                                     e_algorithm.get('measurement'),
+                                                                     probe_infos,
                                                                      make_algorithm_func(e_python.text))
 
     node_infos = {}
@@ -442,10 +487,14 @@ if __name__ == '__main__':
                               ])):
         pass
 
+    class ProbeInfo(namedtuple('ProbeInfo',
+                               ['probe',
+                                'measurement'])):
+        pass
+
     class AlgorithmInfo(namedtuple('AlgorithmInfo',
                               ['name',
-                               'probe',
-                               'measurement',
+                               'probe_infos',
                                'callable'])):
         pass
 

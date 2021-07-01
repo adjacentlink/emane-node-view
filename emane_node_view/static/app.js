@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 - Adjacent Link LLC, Bridgewater, New Jersey
+ * Copyright (c) 2019,2021 - Adjacent Link LLC, Bridgewater, New Jersey
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -187,15 +187,20 @@ socket.on("connect", function(event) {
         {
             for(var j = 0; j < obj[i].links.length; ++j)
             {
-                if(node_markers.has(obj[i].links[j]))
+                if(node_markers.has(obj[i].links[j].remote))
                 {
                     var a = node_markers.get(obj[i].id).getLatLng();
-                    var b = node_markers.get(obj[i].links[j]).getLatLng();
+                    var b = node_markers.get(obj[i].links[j].remote).getLatLng();
                     var bounds = L.latLngBounds(a,b);
+                    var link_color = obj[i].link_color;
+                    if(obj[i].links[j].hasOwnProperty('color'))
+                    {
+                        link_color = obj[i].links[j].color;
+                    }
                     polylines.push(L.polyline([a,bounds.getCenter()],
-                                              {color: obj[i].link_color}).addTo(link_layer_group));
+                                              {color: link_color}).addTo(link_layer_group));
                     polylines.push(L.polyline([bounds.getCenter(),b],
-                                              {color: obj[i].link_color, dashArray: '5'}).addTo(link_layer_group));
+                                              {color: link_color, dashArray: '5'}).addTo(link_layer_group));
                 }
             }
         }

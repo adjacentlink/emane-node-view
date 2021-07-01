@@ -20,10 +20,10 @@ specified via XML.
 [5]: https://github.com/adjacentlink/opentestpoint
 
 Currently Flask SocketIO and some of its dependencies are not
-available in all distribution repositories. The recommended approach
-is to install emane-node-view using a Python virtualenv. An
-installation script that satisfies most use cases is provided
-(`install-virtualenv.sh`).
+available in all distribution repositories. For those distros, the
+recommended approach is to install emane-node-view using a Python
+virtualenv. An installation script that satisfies most use cases is
+provided (`install-virtualenv.sh`).
 
 The follow EMANE and OpenTestPoint packages are required:
 
@@ -43,7 +43,9 @@ a single JavaScript file.
 
 ## Install the latest stable Node LTS
 
-1. Installing NODE LTS 10.x
+Example shown for Node LTS 10.x:
+
+1. Installing NODE
 
     On Fedora/CentOS:
 
@@ -65,12 +67,20 @@ a single JavaScript file.
     $ sudo npm install browserify -g
     ```
 
-## Install emane-node-view in a virtualenv
+## Install emane-node-view Dependencies
 
-Create a Python virtualenv with flask, flask-socketio and
-emane-node-view installed. The virtualenv is created with
-`--system-site-packages` to allow access to EMANE and OpenTestPoint
-plugins that have been [installed][7] via your system package manager.
+For distros with flask and flask-socketio packages available, such as
+Fedora >= 33:
+
+```
+$ sudo dnf install python3-flask python3-flask-socketio
+```
+
+For distros without flask and flask-socketio packages, create a Python
+virtualenv with flask, flask-socketio and emane-node-view
+installed. The virtualenv is created with `--system-site-packages` to
+allow access to EMANE and OpenTestPoint plugins that have been
+[installed][7] via your system package manager.
 
 [7]: https://github.com/adjacentlink/emane/wiki/Install
 
@@ -248,18 +258,27 @@ by `emane-node-view-publisher`. You must specify a unique algorithm
 `name`, the OpenTestPoint measurement `probe` to subscribe, and the
 `measurement` within the probe to process.
 
-Three special local variables are used to communicate information to
+Six special local variables are used to communicate information to
 and from link detection code:
 
 1. `_blob`: Serialized OpenTestPoint measurement specified with the
    `measurement` attribute. (in)
 
-2. `_cookie`: A variable that is passed to the link detection code to
+2. `_name`: OpenTestPoint measurement name specified with the
+   `measurement` attribute. (in)
+
+3. `_tag`: OpenTestPoint measurement publisher tag. (in)
+
+4. `_cookie`: A variable that is passed to the link detection code to
    store any state information. Each instance of the link detection
    algorithm has a unique `_cookie`. (in/out)
 
-3. `_links`: A list of NEM ids that represent the links seen by the
-   node. (out)
+5. `_gcookie`: A variable that is passed to the link detection code to
+   store any global state information. All link detection algorithm
+   instances share the same `_gcookie`. (in/out)
+
+6. `_links`: A list of NEM ids or 2-tuples (<NEM id>, <link color>)
+   that represent the links seen by the node. (out)
 
 For the simple link detection algorithm shown, a node is considered to
 have a link to a remote node if that node has received an over-the-air
