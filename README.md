@@ -277,7 +277,7 @@ and from link detection code:
    store any global state information. All link detection algorithm
    instances share the same `_gcookie`. (in/out)
 
-6. `_links`: A list of NEM ids or 2-tuples (<NEM id>, <link color>)
+6. `_links`: A list of NEM ids or 2-tuples (NEM id, link color)
    that represent the links seen by the node. (out)
 
 For the simple link detection algorithm shown, a node is considered to
