@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade --no-install-recommends
 
-RUN apt-get -y install git curl autoconf automake make \
+RUN apt-get -y install git curl autoconf automake make python3-setuptools \
                        python3-flask python3-flask-socketio
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
@@ -18,3 +18,6 @@ RUN git clone https://github.com/adjacentlink/emane-node-view -b develop
 
 WORKDIR emane-node-view
 RUN ./autogen.sh && ./configure && make
+
+RUN echo 'complete'
+
