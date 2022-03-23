@@ -50,14 +50,14 @@ Example shown for Node LTS 10.x:
     On Fedora/CentOS:
 
     ```
-    $ curl -sL https://rpm.nodesource.com/setup_10.x | sudo -E bash -
+    $ curl -sL https://rpm.nodesource.com/setup_14.x | sudo -E bash -
     sudo dnf install nodejs
     ```
 
     On Ubuntu:
 
     ```
-    $ curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
+    $ curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
     $ sudo apt-get install nodejs
     ```
 
