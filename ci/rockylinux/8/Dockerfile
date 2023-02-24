@@ -1,4 +1,4 @@
-FROM rockylinux:8.5
+FROM rockylinux:8
 
 RUN dnf -y update
 RUN dnf -y install epel-release dnf-plugins-core

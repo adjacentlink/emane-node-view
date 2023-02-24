@@ -1,7 +1,7 @@
 FROM fedora:37
 
 RUN dnf -y install git autoconf automake make \
-                   python3-flask python3-flask-socketio
+                   python3-flask python3-flask-socketio python3-setuptools
 
 
 RUN curl -sL https://rpm.nodesource.com/setup_14.x | bash -
