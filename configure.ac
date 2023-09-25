@@ -33,7 +33,7 @@
  See toplevel COPYING for more information.
 ])
 
-AC_INIT([emane-node-view],0.2.4,[labs at adjacentlink dot com])
+AC_INIT([emane-node-view],[0.2.4],[labs at adjacentlink dot com])
 
 AC_CONFIG_SRCDIR([emane_node_view])
 
@@ -56,6 +56,6 @@ AS_IF([test x"$BROWSERIFY_CHECK" != x"yes"],
 LANG=C
 AC_SUBST(LANG)
 
-AC_OUTPUT(
- Makefile
-)
+AC_CONFIG_FILES([Makefile
+])
+AC_OUTPUT
