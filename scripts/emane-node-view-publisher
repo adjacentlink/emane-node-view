@@ -323,13 +323,17 @@ def process(socketio,shutdown_event,endpoint,node_infos,proxy_infos,algorithm_in
                 elif report.data.name in measurement_groups and \
                              report.tag in measurement_groups[report.data.name]:
                     if node_infos[report.tag].link_detection != None:
-                        (links,
-                         cookies[report.tag],
-                         global_cookie) = algorithm_infos[node_infos[report.tag].link_detection].callable(report.data.blob,
-                                                                                                          report.data.name,
-                                                                                                          report.tag,
-                                                                                                          cookies[report.tag],
-                                                                                                          global_cookie)
+                        try:
+                            (links,
+                             cookies[report.tag],
+                             global_cookie) = algorithm_infos[node_infos[report.tag].link_detection].callable(report.data.blob,
+                                                                                                              report.data.name,
+                                                                                                              report.tag,
+                                                                                                              cookies[report.tag],
+                                                                                                              global_cookie)
+                        except:
+                            logging.error(traceback.format_exc())
+
                         store[report.tag]['links'] = []
                         for link in links:
                             if hasattr(link,'__iter__') and len(link) == 2:
@@ -395,9 +399,12 @@ def do_main():
                                          e_probe.get('measurement')))
 
         for e_python in e_algorithm.xpath('python'):
-            algorithm_infos[e_algorithm.get('name')] = AlgorithmInfo(e_algorithm.get('name'),
-                                                                     probe_infos,
-                                                                     make_algorithm_func(e_python.text))
+            try:
+                algorithm_infos[e_algorithm.get('name')] = AlgorithmInfo(e_algorithm.get('name'),
+                                                                         probe_infos,
+                                                                         make_algorithm_func(e_python.text))
+            except:
+                logging.error(traceback.format_exc())
 
     node_infos = {}
     for e_node in root.xpath('/emane-node-view-publisher/nodes/node'):
