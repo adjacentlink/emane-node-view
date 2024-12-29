@@ -1,4 +1,4 @@
-FROM fedora:37
+FROM fedora:41
 
 RUN dnf -y install git autoconf automake make \
                    python3-flask python3-flask-socketio python3-setuptools
