@@ -1,4 +1,10 @@
-from setuptools import setup, find_namespace_packages
+namespace_packages=[]
+
+try:
+    from setuptools import setup, find_namespace_packages
+    namespace_packages=find_namespace_packages(include=['emane_node_view.*'])
+except:
+    from setuptools import setup
 
 setup(name='emane-node-view',
       version='@VERSION@',
@@ -9,5 +15,5 @@ setup(name='emane-node-view',
       url="https://adjacentlink.com",
       license = 'BSD',
       include_package_data=True,
-      packages=['emane_node_view'] + find_namespace_packages(include=['emane_node_view.*']),
+      packages=['emane_node_view'] + namespace_packages,
       scripts=['scripts/emane-node-view-publisher'])
