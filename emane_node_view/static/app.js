@@ -58,9 +58,15 @@ var esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
 });
 
+var openStreetMap = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+	maxZoom: 19,
+	attribution: 'Tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+
 var base_layers = {
     "ESRI National Geographic": esri_NatGeoWorldMap,
-    "ESRI World Imagery": esri_WorldImagery
+    "ESRI World Imagery": esri_WorldImagery,
+    "OpenStreetMap":openStreetMap
 };
 
 var link_layer_group = L.layerGroup()
@@ -93,6 +99,14 @@ L.control.layers(base_layers,link_layers).addTo(map);
 
 // default on
 map.addLayer(link_layer_group)
+
+map.on('click', function(e) {
+        var popLocation= e.latlng;
+        var popup = L.popup()
+        .setLatLng(popLocation)
+            .setContent(`${popLocation.lat},${popLocation.lng}`)
+        .openOn(map);
+    });
 
 // Create a socket instance
 var socket = new io('ws:///api',{reconnect: true});

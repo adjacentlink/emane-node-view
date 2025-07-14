@@ -1,5 +1,5 @@
 %AC_COPYRIGHT([
- Copyright (c) 2019,2021-2022 - Adjacent Link LLC, Bridgewater,
+ Copyright (c) 2019,2021-2022,2025 - Adjacent Link LLC, Bridgewater,
  New Jersey
  All rights reserved.
 
@@ -33,7 +33,7 @@
  See toplevel COPYING for more information.
 ])
 
-AC_INIT([emane-node-view],0.2.4,[labs at adjacentlink dot com])
+AC_INIT([emane-node-view],[0.2.5],[labs at adjacentlink dot com])
 
 AC_CONFIG_SRCDIR([emane_node_view])
 
@@ -56,6 +56,6 @@ AS_IF([test x"$BROWSERIFY_CHECK" != x"yes"],
 LANG=C
 AC_SUBST(LANG)
 
-AC_OUTPUT(
- Makefile
-)
+AC_CONFIG_FILES([Makefile
+])
+AC_OUTPUT
